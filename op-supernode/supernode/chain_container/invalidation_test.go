@@ -13,7 +13,43 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	gethlog "github.com/ethereum/go-ethereum/log"
 	"github.com/stretchr/testify/require"
+	bolt "go.etcd.io/bbolt"
 )
+
+func TestDecodeDenyRecords_LegacyFormatErrors(t *testing.T) {
+	t.Parallel()
+
+	legacyHash := common.HexToHash("0x1111111111111111111111111111111111111111111111111111111111111111")
+	records, err := decodeDenyRecords(legacyHash.Bytes())
+
+	require.Error(t, err)
+	require.Nil(t, records)
+	require.Contains(t, err.Error(), "failed to decode denylist records")
+}
+
+func TestDenyList_Contains_LegacyFormatErrors(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	dl, err := OpenDenyList(dir)
+	require.NoError(t, err)
+	defer dl.Close()
+
+	height := uint64(123)
+	legacyHash := common.HexToHash("0x2222222222222222222222222222222222222222222222222222222222222222")
+	key := heightToKey(height)
+
+	err = dl.db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket(denyListBucketName)
+		return b.Put(key, legacyHash.Bytes())
+	})
+	require.NoError(t, err)
+
+	found, err := dl.Contains(height, legacyHash)
+	require.Error(t, err)
+	require.False(t, found)
+	require.Contains(t, err.Error(), "failed to decode denylist records")
+}
 
 func TestDenyList_AddAndContains(t *testing.T) {
 	t.Parallel()
